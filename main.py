@@ -1,55 +1,122 @@
 #coding=utf-8
-from os           import pathsep, makedirs
-from sys          import argv, exit as sexit
+from os           import makedirs
+from os.path      import sep as pathsep
+from typing       import Annotated
 from datetime     import datetime
-from collections  import Counter
+from glob         import glob
 
-from humanize     import naturaldelta
+from pathlib      import Path
+from typer        import run, Argument, Option
+from humanize     import precisedelta
 
 from layerBlock   import LayerBlock
 from sequence     import PrintSequence
 from tqdm         import tqdm
 
-code = ''
-codeLines = []
+__version__ = 'v2'
 
 def getLayerBlock(blocks: list[LayerBlock], lineNo: int) -> LayerBlock | None:
     _blocks = [layerBlock for layerBlock in blocks if (lineNo in layerBlock)]
 
     return _blocks[0] if _blocks else None
 
-def main(args: list[str]) -> int:
+def main(
+        paths: Annotated[list[str], Argument(
+            file_okay = True,
+            dir_okay = False,
+            help = 'Desired paths to G-Code files. If None, all G-Code files in working '
+                'directory are used.'
+        )] = None,
+        to: Annotated[str, Option(
+            file_okay = False,
+            dir_okay = True,
+            help = 'Directory to output files in. If none, the original files\' '
+                'directories are used.'
+        )] = '',
+        prefix: Annotated[str, Option(
+            help = 'Prefix for output file names. If none, no prefix will be used. '
+                'Attention: either prefix or suffix has to be provided!'
+        )] = '', 
+        suffix: Annotated[str, Option(
+            help = 'Suffix for output file names. If none, no prefix will be used. '
+                'Attention: either prefix or suffix has to be provided!'
+        )] = '_V',
+        overwrite: Annotated[bool, Option(
+            help = 'Overwrite the existing files in the output directory.',
+            is_flag = True
+        )] = False
+        ) -> int:
+    '''
+    Modify the given G-Code files to verbose printing state.    
+    '''
     try:
+        print('GCodeVerbose', __version__)
         startTime = datetime.now()
-        paths: list[str] = []
-        makedirs('output', exist_ok = True)
 
-        if (args):
-            paths = args[1:]
-        else:
-            paths.append(input('Enter the full path to the G-Code file: '))
+        if (not paths):
+            inputPath = input('Enter the full path to the G-Code file: ')
 
-        for lno, path in enumerate(paths):
-            print('Checking file no.', lno + 1, 'at', path)
+            if (inputPath):
+                paths.append(inputPath)
+            else:
+                print('Adding all G-Code files in the current directory:', Path.cwd())
 
-            fileName = path.split(pathsep)[-1]
+                for path in glob(f'{Path.cwd()}/*.gcode'):
+                    if (not path.split(pathsep)[-1].split('.')[0].startswith(prefix if prefix else '.') and
+                        not path.split(pathsep)[-1].split('.')[0].endswith(suffix)):
+                        paths.append(path)
 
-            outputLines: list[str] = []
+        if (to):
+            makedirs(to, exist_ok = True)
+
+        for path_ix, path in enumerate(paths):
+            print('\nChecking file no.', path_ix + 1, 'of', len(paths), 'at', path)
+
+            pathParts = path.split(pathsep)
+            origDir = pathsep.join(pathParts[:-1])
+
+            fileName = pathParts[-1].split('.')[0]
                 
+            outputFileName = f'{to if to else origDir}/{prefix}{fileName}{suffix}.gcode'
+
             fileStart = datetime.now()
 
-            with open(path, 'r') as inputFile, open(f'output/{fileName}', 'w') as outputFile:
+            try:
+                with open(outputFileName, 'x') as outputFile:
+                    outputFile.write('')
+            except FileExistsError:
+                if (overwrite):
+                    with open(outputFileName, 'w') as outputFile:
+                        outputFile.write('')
+                else:
+                    print('Output file', outputFileName, 'for file', path, 'already exists. Skipping.')
+                    continue
+
+            with open(path, 'r') as inputFile, open(outputFileName, 'a+') as outputFile:
                 code = inputFile.read()
 
-                if (not code.startswith(';FLAVOR:')):
+                if (not code.startswith(';FLAVOR:') or not 'G91 ;' in code):
                     # If not G-Code, don-t process
-                    print(f'{fileName} is not a valid G-Code file. Skipping.')
+                    if (code.startswith(';FLAVOR:')):
+                        print('FLAVOR definition not found')
+                    if ('G91 ;' in code):
+                        print('G91 operation is not defined')
+                    print(f'{path} is not a valid G-Code file. Skipping.')
                     continue
 
                 codeLines = code.splitlines()
 
                 lcCmt = code.find(';LAYER_COUNT:')
                 assert lcCmt > -1, 'Invalid G-Code: layer count is not defined'
+
+                endCmt = code.find('G91')
+                assert endCmt > -1, 'Invalid G-Code: end G91 operation is not defined'
+
+                endCmtLine = -1
+
+                for lineNo, line in enumerate(codeLines):
+                    if (line.startswith('G91')):
+                        endCmtLine = lineNo
                 
                 sequences: list[PrintSequence] = []
 
@@ -58,23 +125,19 @@ def main(args: list[str]) -> int:
                     sequences.append(
                         PrintSequence(
                         codeLines,
-                        range(lco[0], layerCounts[ix + 1][0] if (ix + 1 < len(layerCounts)) else codeLines.index('G91 ;Relative positioning')), 
+                        range(lco[0], layerCounts[ix + 1][0] if (ix + 1 < len(layerCounts)) else endCmtLine), 
                         int(lco[1][13:])
                         ))
                     
                 firstSeqStart = sequences[0].seqRange.start
                 totalCommands = len([line for line in codeLines if (line.startswith('G1'))])
+                print('Print sequences detected:', len(sequences))
                 print('Total movement commands detected:', totalCommands)
 
-                outputLines.extend(codeLines[:firstSeqStart])
-                
-                print('Patching lines...')
+                outputFile.write('\n'.join(codeLines[:firstSeqStart]))
 
                 for seq_ix, sequence in enumerate(sequences):
                     seqStart = datetime.now()
-                    print('Sequence', seq_ix + 1, 'of', len(sequences))
-
-                    print('Adding status commands for this sequence')
 
                     # Layers blocks are those groups of printing operations, which are done in one layer
                     layerBlocks = [
@@ -83,16 +146,19 @@ def main(args: list[str]) -> int:
                             sequence.lines,
                             sequence.lines.index(f';LAYER:{n}'), 
                             sequence.lines.index(f';LAYER:{n + 1}')
-                            if (f';LAYER:{n + 1}' in sequence.code) else codeLines.index('G91 ;Relative positioning')
+                            if (f';LAYER:{n + 1}' in sequence.code) else endCmtLine
                             )
                         for n in range(sequence.layersCount)]
+                    
+                    print('Adding status commands for sequence', seq_ix + 1, 'of', len(sequences), 'with', f'{sequence.layersCount}', 'layers')
                     
                     commandsProcessed = 0
                     commandsInThisLayerBlock = 0
                     currentLayerBlockId = 0
                     previousLayerBlockId = 0
+                    previousPercentage = -1
 
-                    with tqdm(total = totalCommands, colour = '#00ff00') as progressPatch:
+                    with tqdm(total = sequence.totalCommands, colour = '#00ff00') as progressPatch:
                         for lineNo, codeLine in enumerate(sequence.lines):
                             layerBlock = getLayerBlock(layerBlocks, lineNo)
                             currentLayerBlockId = layerBlock.ix if layerBlock else 0
@@ -105,48 +171,35 @@ def main(args: list[str]) -> int:
 
                                 # This is a G1 command
                                 percentage = round((commandsInThisLayerBlock / len(layerBlock)) * 100)
+                                verbose = 'M117 L{}/{} {}%'.format(currentLayerBlockId, len(layerBlock), percentage)
 
-                                outputLines.append(codeLine)
-                                outputLines.append('M117 L {} {}%'.format(currentLayerBlockId, percentage))
+                                outputFile.write(codeLine + '\n')
+
+                                if (previousPercentage != percentage):
+                                    outputFile.write(verbose + '\n')
+                                    previousPercentage = percentage
 
                                 commandsProcessed += 1
                                 progressPatch.update()
                             else:
-                                outputLines.append(codeLine)
-
-                    print()
-                    print('Removing duplicate status commands to reduce refresh intensity...')
-
-                    counterDuplicates = Counter([line for line in outputLines if (line.startswith('M117 L'))])
-
-                    with tqdm(total = sum(counterDuplicates.values()) - len(counterDuplicates.keys()), colour = '#00ff00') as progressDuplicates:
-                        for line, count in counterDuplicates.items():
-                            firstOccurrence = outputLines.index(line)
-
-                            for i in range(count):
-                                outputLines.remove(line)
-                                progressDuplicates.update()
-
-                            outputLines.insert(firstOccurrence, line)
-                            progressDuplicates.update(-1)
+                                outputFile.write(codeLine + '\n')
 
                     seqEnd = datetime.now()
                     seqDelta = seqEnd - seqStart
 
-                    print('Desired operations for sequence', seq_ix, 'completed in', naturaldelta(seqDelta))
-                    print()
-
-                outputFile.write('\n'.join(outputLines))
+                    print('Desired operations for sequence', seq_ix + 1, 'of', len(sequences), 'completed in', precisedelta(seqDelta, format = '%0.0f'))
 
             fileEnd = datetime.now()
             fileDelta = fileEnd - fileStart
 
-            print('Desired operations for file', fileName, 'completed in', naturaldelta(fileDelta))
+            print('Desired operations for file', path_ix + 1, 'of', len(paths), 'at', path, 'completed in', precisedelta(fileDelta, format = '%0.0f'))
+        else:
+            print('No more files found to process.')
 
         endTime = datetime.now()
         doneIn = endTime - startTime
 
-        print('\nDesired operations completed in', naturaldelta(doneIn))
+        print('Desired operations on', len(paths), 'files completed in', precisedelta(doneIn, format = '%0.0f'))
         print('Thanks.')
         return 0
     
@@ -155,4 +208,4 @@ def main(args: list[str]) -> int:
         return 1
 
 if (__name__ == '__main__'):
-    sexit(main(argv))
+    run(main)
