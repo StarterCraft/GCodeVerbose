@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 class PrintSequence:
     def __init__(self, codeLines: list[str], seqRange: range, layersCount: int) -> None:
         self.lines = codeLines[seqRange.start:seqRange.stop]

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 class LayerBlock:
     def __init__(self, ix: int, codeLines: list[str], start: int, end: int):
         self.ix = ix

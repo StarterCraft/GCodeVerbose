@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #coding=utf-8
 from os           import makedirs
 from os.path      import sep as pathsep
