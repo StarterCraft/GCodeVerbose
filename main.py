@@ -141,8 +141,10 @@ def main(
 
                 firstSeqStart = sequences[0].seqRange.start
                 totalPrintingCommands = len([line for line in codeLines if (line.startswith('G1'))])
+                totalTypeSwitches = len([line for line in codeLines if (line.startswith(';TYPE:'))])
                 print('Print sequences detected:', len(sequences))
                 print('Total printing commands detected:', totalPrintingCommands)
+                print('Total printing phase type switches detected:', totalTypeSwitches)
 
                 outputFile.write('\n'.join(codeLines[:firstSeqStart]))
 
