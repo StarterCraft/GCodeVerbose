@@ -140,9 +140,9 @@ def main(
                         ))
 
                 firstSeqStart = sequences[0].seqRange.start
-                totalCommands = len([line for line in codeLines if (line.startswith('G1'))])
+                totalPrintingCommands = len([line for line in codeLines if (line.startswith('G1'))])
                 print('Print sequences detected:', len(sequences))
-                print('Total movement commands detected:', totalCommands)
+                print('Total printing commands detected:', totalPrintingCommands)
 
                 outputFile.write('\n'.join(codeLines[:firstSeqStart]))
 
