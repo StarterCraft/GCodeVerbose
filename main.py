@@ -34,24 +34,42 @@ def main(
         paths: Annotated[list[str], Argument(
             file_okay = True,
             dir_okay = False,
-            help = 'Desired paths to G-Code files. If None, all G-Code files in working '
-                'directory are used.'
+            help = 'Desired paths to G-Code files. If none, all G-Code files in the current '
+                'directory are used.\n'
+                'If --thisdir is used, the paths are appended to the known G-Code file paths '
+                'in the current directory.\n'
+                'If --recursive is used, the paths are appended to the known G-Code file paths '
+                'in the current directory and its\' subdirectories.'
         )] = None,
+        thisdir: Annotated[bool, Option(
+            '--all', '-a',
+            help = 'Include all G-Code files in the current directory.',
+            is_flag = True
+        )] = False,
+        recursive: Annotated[bool, Option(
+            '--recursive', '-r',
+            help = 'Include all G-Code files in the output directory and its\' subdirectories.',
+            is_flag = True
+        )] = False,
         to: Annotated[str, Option(
+            '--to', '-o',
             file_okay = False,
             dir_okay = True,
             help = 'Directory to output files in. If none, the original files\' '
                 'directories are used.'
         )] = '',
         prefix: Annotated[str, Option(
+            '--prefix', '-p',
             help = 'Prefix for output file names. If none, no prefix will be used. '
                 'Attention: either prefix or suffix has to be provided!'
         )] = '',
         suffix: Annotated[str, Option(
+            '--suffix', '-s',
             help = 'Suffix for output file names. If none, no prefix will be used. '
                 'Attention: either prefix or suffix has to be provided!'
         )] = '_V',
         overwrite: Annotated[bool, Option(
+            '--overwrite', '-o',
             help = 'Overwrite the existing files in the output directory.',
             is_flag = True
         )] = False
@@ -64,17 +82,34 @@ def main(
         startTime = datetime.now()
 
         if (not paths):
-            inputPath = input('Enter the full path to the G-Code file: ')
-
-            if (inputPath):
-                paths.append(inputPath)
-            else:
+            if (thisdir):
                 print('Adding all G-Code files in the current directory:', Path.cwd())
 
                 for path in glob(f'{Path.cwd()}/*.gcode'):
                     if (not path.split(pathsep)[-1].split('.')[0].startswith(prefix if prefix else '.') and
                         not path.split(pathsep)[-1].split('.')[0].endswith(suffix)):
                         paths.append(path)
+
+            elif (recursive):
+                print('Adding all G-Code files in the current directory and its subdirectiories:', Path.cwd())
+
+                for path in glob(f'{Path.cwd()}/**/*.gcode'):
+                    if (not path.split(pathsep)[-1].split('.')[0].startswith(prefix if prefix else '.') and
+                        not path.split(pathsep)[-1].split('.')[0].endswith(suffix)):
+                        paths.append(path)
+
+            else:
+                inputPath = input('Enter the full path to the G-Code file: ')
+
+                if (inputPath):
+                    paths.append(inputPath)
+                else:
+                    print('Adding all G-Code files in the current directory:', Path.cwd())
+
+                    for path in glob(f'{Path.cwd()}/*.gcode'):
+                        if (not path.split(pathsep)[-1].split('.')[0].startswith(prefix if prefix else '.') and
+                            not path.split(pathsep)[-1].split('.')[0].endswith(suffix)):
+                            paths.append(path)
 
         if (to):
             makedirs(to, exist_ok = True)
@@ -157,7 +192,7 @@ def main(
                     # Layers blocks are those groups of printing operations, which are done in one layer
                     layerBlocks = [
                         LayerBlock(
-                            n,
+                            n + 1,
                             sequence.lines,
                             sequence.lines.index(f';LAYER:{n}'),
                             sequence.lines.index(f';LAYER:{n + 1}')
@@ -169,7 +204,7 @@ def main(
 
                     sequenceCommandsAdded = 0
                     commandsInThisLayerBlock = 0
-                    currentLayerBlockId = 0
+                    currentLayerBlockId = -1
                     typeChar = ''
                     previousLayerBlockId = 0
                     previousPercentage = -1
@@ -178,7 +213,7 @@ def main(
                     with tqdm(total = sequence.totalCommands) as progressPatch:
                         for lineNo, codeLine in enumerate(sequence.lines):
                             layerBlock = getLayerBlock(layerBlocks, lineNo)
-                            currentLayerBlockId = layerBlock.ix if layerBlock else 0
+                            currentLayerBlockId = layerBlock.ix if layerBlock else -1
                             if (layerBlock):
                                 if (codeLine.startswith('G1')):
                                     # This is a G1 command
@@ -192,7 +227,7 @@ def main(
                                     typeChar = printTypes.get(codeLine, 'PR')
 
                                 percentage = round((commandsInThisLayerBlock / len(layerBlock)) * 100)
-                                verbose = 'M117 L{}/{} {}% {}'.format(currentLayerBlockId, len(layerBlock), percentage, typeChar)
+                                verbose = 'M117 S{} L{}/{} {}% {}'.format(seq_ix + 1, currentLayerBlockId, len(layerBlocks), percentage, typeChar)
 
                                 outputFile.write(codeLine + '\n')
 
@@ -215,7 +250,7 @@ def main(
                     print('Added a total of', sequenceCommandsAdded, 'commands to this sequence.')
                     print('Desired operations for sequence', seq_ix + 1, 'of', len(sequences), 'completed in', precisedelta(seqDelta, format = '%0.0f'))
 
-            outputFile.write(code[endCmt:])
+                outputFile.write(code[endCmt:])
 
             fileEnd = datetime.now()
             fileDelta = fileEnd - fileStart
