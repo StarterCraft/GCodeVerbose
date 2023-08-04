@@ -7,7 +7,8 @@ class PrintSequence:
         self.start = seqRange.start
         self.stop = seqRange.stop
         self.layersCount = layersCount
-        self.totalCommands = len([line for line in self.lines if (line.startswith('G1'))])
+        self.totalCommands = len([line for line in self.lines if (
+            line.startswith('G1') or line.startswith(';TYPE:'))])
     
     def __len__(self) -> int:
         return self.totalCommands

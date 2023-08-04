@@ -14,7 +14,16 @@ from layerBlock   import LayerBlock
 from sequence     import PrintSequence
 from tqdm         import tqdm
 
-__version__ = 'v2'
+__version__ = 3
+printTypes = {
+    ';TYPE:SKIN': 'SK',
+    ';TYPE:FILL': 'FL',
+    ';TYPE:WALL-INNER': 'WI',
+    ';TYPE:WALL-OUTER': 'WO',
+    ';TYPE:SKIRT': 'AS',
+    ';TYPE:BRIM': 'AB',
+    ';TYPE:RAFT': 'AR'
+}
 
 def getLayerBlock(blocks: list[LayerBlock], lineNo: int) -> LayerBlock | None:
     _blocks = [layerBlock for layerBlock in blocks if (lineNo in layerBlock)]
@@ -51,7 +60,7 @@ def main(
     Modify the given G-Code files to verbose printing state.    
     '''
     try:
-        print('GCodeVerbose', __version__)
+        print('GCodeVerbose version', __version__)
         startTime = datetime.now()
 
         if (not paths):
@@ -137,6 +146,8 @@ def main(
 
                 outputFile.write('\n'.join(codeLines[:firstSeqStart]))
 
+                fileCommandsAdded = 0
+
                 for seq_ix, sequence in enumerate(sequences):
                     seqStart = datetime.now()
 
@@ -153,55 +164,68 @@ def main(
                     
                     print('Adding status commands for sequence', seq_ix + 1, 'of', len(sequences), 'with', f'{sequence.layersCount}', 'layers')
                     
-                    commandsProcessed = 0
+                    sequenceCommandsAdded = 0
                     commandsInThisLayerBlock = 0
                     currentLayerBlockId = 0
+                    typeChar = ''
                     previousLayerBlockId = 0
                     previousPercentage = -1
+                    previousTypeChar = 'PR'
 
-                    with tqdm(total = sequence.totalCommands, colour = '#00ff00') as progressPatch:
+                    with tqdm(total = sequence.totalCommands) as progressPatch:
                         for lineNo, codeLine in enumerate(sequence.lines):
                             layerBlock = getLayerBlock(layerBlocks, lineNo)
                             currentLayerBlockId = layerBlock.ix if layerBlock else 0
-                            if (layerBlock and codeLine.startswith('G1')):
-                                if (currentLayerBlockId == previousLayerBlockId):
-                                    commandsInThisLayerBlock += 1
-                                else:
-                                    commandsInThisLayerBlock = 1
-                                    previousLayerBlockId = currentLayerBlockId
+                            if (layerBlock):
+                                if (codeLine.startswith('G1')):
+                                    # This is a G1 command
+                                    if (currentLayerBlockId == previousLayerBlockId):
+                                        commandsInThisLayerBlock += 1
+                                    else:
+                                        commandsInThisLayerBlock = 1
+                                        previousLayerBlockId = currentLayerBlockId
+                                elif (codeLine.startswith(';TYPE:')):
+                                    # This is a type changing line
+                                    typeChar = printTypes.get(codeLine, 'PR')
 
-                                # This is a G1 command
                                 percentage = round((commandsInThisLayerBlock / len(layerBlock)) * 100)
-                                verbose = 'M117 L{}/{} {}%'.format(currentLayerBlockId, len(layerBlock), percentage)
+                                verbose = 'M117 L{}/{} {}% {}'.format(currentLayerBlockId, len(layerBlock), percentage, typeChar)
 
                                 outputFile.write(codeLine + '\n')
 
-                                if (previousPercentage != percentage):
+                                if (previousPercentage != percentage or previousTypeChar != typeChar):
                                     outputFile.write(verbose + '\n')
                                     previousPercentage = percentage
+                                    previousTypeChar = typeChar
 
-                                commandsProcessed += 1
-                                progressPatch.update()
+                                    sequenceCommandsAdded += 1
+                                    fileCommandsAdded += 1
+
+                                if (codeLine.startswith('G1') or codeLine.startswith(';TYPE:')):
+                                    progressPatch.update()
                             else:
                                 outputFile.write(codeLine + '\n')
 
                     seqEnd = datetime.now()
                     seqDelta = seqEnd - seqStart
 
+                    print('Added a total of', sequenceCommandsAdded, 'commands to this sequence.')
                     print('Desired operations for sequence', seq_ix + 1, 'of', len(sequences), 'completed in', precisedelta(seqDelta, format = '%0.0f'))
 
             fileEnd = datetime.now()
             fileDelta = fileEnd - fileStart
 
+            print('Added a total of', fileCommandsAdded, 'commands to this file.')
             print('Desired operations for file', path_ix + 1, 'of', len(paths), 'at', path, 'completed in', precisedelta(fileDelta, format = '%0.0f'))
         else:
             print('No more files found to process.')
 
-        endTime = datetime.now()
-        doneIn = endTime - startTime
+        if (paths):
+            endTime = datetime.now()
+            doneIn = endTime - startTime
+            print('Desired operations on', len(paths), 'files completed in', precisedelta(doneIn, format = '%0.0f'))
+            print('Thanks.')
 
-        print('Desired operations on', len(paths), 'files completed in', precisedelta(doneIn, format = '%0.0f'))
-        print('Thanks.')
         return 0
     
     except KeyboardInterrupt:
