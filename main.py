@@ -145,6 +145,7 @@ def main(
                 print('Print sequences detected:', len(sequences))
                 print('Total printing commands detected:', totalPrintingCommands)
                 print('Total printing phase type switches detected:', totalTypeSwitches)
+                print('Total to process:', totalPrintingCommands + totalTypeSwitches)
 
                 outputFile.write('\n'.join(codeLines[:firstSeqStart]))
 
