@@ -69,7 +69,7 @@ def main(
                 'Attention: either prefix or suffix has to be provided!'
         )] = '_V',
         overwrite: Annotated[bool, Option(
-            '--overwrite', '-o',
+            '--overwrite', '-w',
             help = 'Overwrite the existing files in the output directory.',
             is_flag = True
         )] = False
