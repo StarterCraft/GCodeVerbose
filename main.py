@@ -46,7 +46,7 @@ def main(
         prefix: Annotated[str, Option(
             help = 'Prefix for output file names. If none, no prefix will be used. '
                 'Attention: either prefix or suffix has to be provided!'
-        )] = '', 
+        )] = '',
         suffix: Annotated[str, Option(
             help = 'Suffix for output file names. If none, no prefix will be used. '
                 'Attention: either prefix or suffix has to be provided!'
@@ -57,7 +57,7 @@ def main(
         )] = False
         ) -> int:
     '''
-    Modify the given G-Code files to verbose printing state.    
+    Modify the given G-Code files to verbose printing state.
     '''
     try:
         print('GCodeVerbose version', __version__)
@@ -86,7 +86,7 @@ def main(
             origDir = pathsep.join(pathParts[:-1])
 
             fileName = pathParts[-1].split('.')[0]
-                
+
             outputFileName = f'{to if to else origDir}/{prefix}{fileName}{suffix}.gcode'
 
             fileStart = datetime.now()
@@ -127,7 +127,7 @@ def main(
                 for lineNo, line in enumerate(codeLines):
                     if (line.startswith('G91')):
                         endCmtLine = lineNo
-                
+
                 sequences: list[PrintSequence] = []
 
                 layerCounts = [(ix, line) for ix, line in enumerate(codeLines) if line.startswith(';LAYER_COUNT:')]
@@ -135,10 +135,10 @@ def main(
                     sequences.append(
                         PrintSequence(
                         codeLines,
-                        range(lco[0], layerCounts[ix + 1][0] if (ix + 1 < len(layerCounts)) else endCmtLine), 
+                        range(lco[0], layerCounts[ix + 1][0] if (ix + 1 < len(layerCounts)) else endCmtLine),
                         int(lco[1][13:])
                         ))
-                    
+
                 firstSeqStart = sequences[0].seqRange.start
                 totalCommands = len([line for line in codeLines if (line.startswith('G1'))])
                 print('Print sequences detected:', len(sequences))
@@ -156,14 +156,14 @@ def main(
                         LayerBlock(
                             n,
                             sequence.lines,
-                            sequence.lines.index(f';LAYER:{n}'), 
+                            sequence.lines.index(f';LAYER:{n}'),
                             sequence.lines.index(f';LAYER:{n + 1}')
                             if (f';LAYER:{n + 1}' in sequence.code) else endCmtLine
                             )
                         for n in range(sequence.layersCount)]
-                    
+
                     print('Adding status commands for sequence', seq_ix + 1, 'of', len(sequences), 'with', f'{sequence.layersCount}', 'layers')
-                    
+
                     sequenceCommandsAdded = 0
                     commandsInThisLayerBlock = 0
                     currentLayerBlockId = 0
@@ -229,7 +229,7 @@ def main(
             print('Thanks.')
 
         return 0
-    
+
     except KeyboardInterrupt:
         print('\nAborted by user.')
         return 1
