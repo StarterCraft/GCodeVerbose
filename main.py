@@ -212,6 +212,8 @@ def main(
                     print('Added a total of', sequenceCommandsAdded, 'commands to this sequence.')
                     print('Desired operations for sequence', seq_ix + 1, 'of', len(sequences), 'completed in', precisedelta(seqDelta, format = '%0.0f'))
 
+            outputFile.write(code[endCmt:])
+
             fileEnd = datetime.now()
             fileDelta = fileEnd - fileStart
 
