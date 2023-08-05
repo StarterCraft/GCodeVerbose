@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-#coding=utf-8
-from os           import makedirs
-from os.path      import sep as pathsep
-from typing       import Any, Annotated, Callable
-from datetime     import datetime
-from glob         import glob
+from os          import makedirs
+from os.path     import sep as pathsep
+from typing      import Annotated
+from datetime    import datetime
+from traceback   import print_exception
+from glob        import glob
 
-from pathlib      import Path
-from typer        import Argument, Option
-from click.types  import Path
-from humanize     import precisedelta
-from tqdm         import tqdm
+from pathlib     import Path
+from typer       import Argument, Option
+from click.types import Path
+from humanize    import precisedelta
+from tqdm        import tqdm
 
-from layerBlock   import LayerBlock
-from sequence     import PrintSequence
-from application  import run
+from layerBlock  import LayerBlock
+from sequence    import PrintSequence
+from application import run
 
 __version__ = 3
 printTypes = {
@@ -157,161 +157,168 @@ def main(
             makedirs(to, exist_ok = True)
 
         for path_ix, path in enumerate(paths):
-            print('\nChecking file no.', path_ix + 1, 'of', len(paths), 'at', path)
-
-            pathParts = path.split(pathsep)
-            origDir = pathsep.join(pathParts[:-1])
-
-            fileName = pathParts[-1].split('.')[0]
-
-            outputFileName = f'{to if to else origDir}/{prefix}{fileName}{suffix}.gcode'
-
-            fileStart = datetime.now()
-
             try:
-                with open(outputFileName, 'x') as outputFile:
-                    outputFile.write('')
-            except FileExistsError:
-                if (overwrite):
-                    with open(outputFileName, 'w') as outputFile:
+                print('\nChecking file no.', path_ix + 1, 'of', len(paths), 'at', path)
+
+                pathParts = path.split(pathsep)
+                origDir = pathsep.join(pathParts[:-1])
+
+                fileName = pathParts[-1].split('.')[0]
+
+                outputFileName = f'{to if to else origDir}/{prefix}{fileName}{suffix}.gcode'
+
+                fileStart = datetime.now()
+                
+                try:
+                    with open(outputFileName, 'x') as outputFile:
                         outputFile.write('')
-                else:
-                    print('Output file', outputFileName, 'for file', path, 'already exists. Skipping.')
-                    continue
+                except FileExistsError:
+                    if (overwrite):
+                        with open(outputFileName, 'w') as outputFile:
+                            outputFile.write('')
+                    else:
+                        print('Output file', outputFileName, 'for file', path, 'already exists. Skipping.')
+                        continue
 
-            with open(path, 'r') as inputFile, open(outputFileName, 'a+') as outputFile:
-                code = inputFile.read()
+                with open(path, 'r') as inputFile, open(outputFileName, 'a+') as outputFile:
+                    code = inputFile.read()
 
-                if (not code.startswith(';FLAVOR:') or not 'G91 ;' in code):
-                    # If not G-Code, don-t process
-                    if (code.startswith(';FLAVOR:')):
-                        print('FLAVOR definition not found')
-                    if ('G91 ;' in code):
-                        print('G91 operation is not defined')
-                    print(f'{path} is not a valid G-Code file. Skipping.')
-                    continue
+                    if (not code.startswith(';FLAVOR:') or not 'G91 ;' in code):
+                        # If not G-Code, don-t process
+                        if (code.startswith(';FLAVOR:')):
+                            print('FLAVOR definition not found')
+                        if ('G91 ;' in code):
+                            print('G91 operation is not defined')
+                        print(f'{path} is not a valid G-Code file. Skipping.')
+                        continue
 
-                codeLines = code.splitlines()
+                    codeLines = code.splitlines()
 
-                lcCmt = code.find(';LAYER_COUNT:')
-                assert lcCmt > -1, 'Invalid G-Code: layer count is not defined'
+                    lcCmt = code.find(';LAYER_COUNT:')
+                    assert lcCmt > -1, 'Invalid G-Code: layer count is not defined'
 
-                endCmt = code.find('G91')
-                assert endCmt > -1, 'Invalid G-Code: end G91 operation is not defined'
+                    endCmt = code.find('G91')
+                    assert endCmt > -1, 'Invalid G-Code: end G91 operation is not defined'
 
-                endCmtLine = -1
+                    endCmtLine = -1
 
-                for lineNo, line in enumerate(codeLines):
-                    if (line.startswith('G91')):
-                        endCmtLine = lineNo
+                    for lineNo, line in enumerate(codeLines):
+                        if (line.startswith('G91')):
+                            endCmtLine = lineNo
 
-                sequences: list[PrintSequence] = []
+                    sequences: list[PrintSequence] = []
 
-                layerCounts = [(ix, line) for ix, line in enumerate(codeLines) if line.startswith(';LAYER_COUNT:')]
-                for ix, lco in enumerate(layerCounts):
-                    sequences.append(
-                        PrintSequence(
-                        codeLines,
-                        range(lco[0], layerCounts[ix + 1][0] if (ix + 1 < len(layerCounts)) else endCmtLine),
-                        int(lco[1][13:])
-                        ))
+                    layerCounts = [(ix, line) for ix, line in enumerate(codeLines) if line.startswith(';LAYER_COUNT:')]
+                    for ix, lco in enumerate(layerCounts):
+                        sequences.append(
+                            PrintSequence(
+                            codeLines,
+                            range(lco[0], layerCounts[ix + 1][0] if (ix + 1 < len(layerCounts)) else endCmtLine),
+                            int(lco[1][13:])
+                            ))
 
-                firstSeqStart = sequences[0].seqRange.start
-                totalPrintingCommands = len([line for line in codeLines if (line.startswith('G1'))])
-                totalTypeSwitches = len([line for line in codeLines if (line.startswith(';TYPE:'))])
-                print('Print sequences detected:', len(sequences))
-                print('Total printing commands detected:', totalPrintingCommands)
-                print('Total printing phase type switches detected:', totalTypeSwitches)
-                print('Total to process:', totalPrintingCommands + totalTypeSwitches)
+                    firstSeqStart = sequences[0].seqRange.start
+                    totalPrintingCommands = len([line for line in codeLines if (line.startswith('G1'))])
+                    totalTypeSwitches = len([line for line in codeLines if (line.startswith(';TYPE:'))])
+                    print('Print sequences detected:', len(sequences))
+                    print('Total printing commands detected:', totalPrintingCommands)
+                    print('Total printing phase type switches detected:', totalTypeSwitches)
+                    print('Total to process:', totalPrintingCommands + totalTypeSwitches)
 
-                outputFile.write('\n'.join(codeLines[:firstSeqStart]))
+                    outputFile.write('\n'.join(codeLines[:firstSeqStart]))
 
-                fileCommandsAdded = 0
+                    fileCommandsAdded = 0
 
-                for seq_ix, sequence in enumerate(sequences):
-                    seqStart = datetime.now()
+                    for seq_ix, sequence in enumerate(sequences):
+                        seqStart = datetime.now()
 
-                    # Layers blocks are those groups of printing operations, which are done in one layer
-                    layerBlocks = [
-                        LayerBlock(
-                            n + 1,
-                            sequence.lines,
-                            sequence.lines.index(f';LAYER:{n}'),
-                            sequence.lines.index(f';LAYER:{n + 1}')
-                            if (f';LAYER:{n + 1}' in sequence.code) else endCmtLine
-                            )
-                        for n in range(sequence.layersCount)]
+                        # Layers blocks are those groups of printing operations, which are done in one layer
+                        layerBlocks = [
+                            LayerBlock(
+                                n + 1,
+                                sequence.lines,
+                                sequence.lines.index(f';LAYER:{n}'),
+                                sequence.lines.index(f';LAYER:{n + 1}')
+                                if (f';LAYER:{n + 1}' in sequence.code) else endCmtLine
+                                )
+                            for n in range(sequence.layersCount)]
 
-                    print('Adding status commands for sequence', seq_ix + 1, 'of', len(sequences), 'with', f'{sequence.layersCount}', 'layers')
+                        print('Adding status commands for sequence', seq_ix + 1, 'of', len(sequences), 'with', f'{sequence.layersCount}', 'layers')
 
-                    sequenceCommandsAdded = 0
-                    commandsInThisLayerBlock = 0
-                    currentLayerBlockId = -1
-                    typeChar = ''
-                    previousLayerBlockId = 0
-                    previousPercentage = -1
-                    previousTypeChar = 'PR'
+                        sequenceCommandsAdded = 0
+                        commandsInThisLayerBlock = 0
+                        currentLayerBlockId = -1
+                        typeChar = ''
+                        previousLayerBlockId = 0
+                        previousPercentage = -1
+                        previousTypeChar = 'PR'
 
-                    with tqdm(total = sequence.totalCommands) as progressPatch:
-                        for lineNo, codeLine in enumerate(sequence.lines):
-                            layerBlock = getLayerBlock(layerBlocks, lineNo)
-                            currentLayerBlockId = layerBlock.ix if layerBlock else -1
-                            if (layerBlock and verbose):
-                                if (codeLine.startswith('G1')):
-                                    # This is a G1 command
-                                    if (currentLayerBlockId == previousLayerBlockId):
-                                        commandsInThisLayerBlock += 1
-                                    else:
-                                        commandsInThisLayerBlock = 1
-                                        previousLayerBlockId = currentLayerBlockId
-                                elif (codeLine.startswith(';TYPE:')):
-                                    # This is a type changing line
-                                    typeChar = printTypes.get(codeLine, 'PR')
+                        with tqdm(total = sequence.totalCommands) as progressPatch:
+                            for lineNo, codeLine in enumerate(sequence.lines):
+                                layerBlock = getLayerBlock(layerBlocks, lineNo)
+                                currentLayerBlockId = layerBlock.ix if layerBlock else -1
+                                if (layerBlock and verbose):
+                                    if (codeLine.startswith('G1')):
+                                        # This is a G1 command
+                                        if (currentLayerBlockId == previousLayerBlockId):
+                                            commandsInThisLayerBlock += 1
+                                        else:
+                                            commandsInThisLayerBlock = 1
+                                            previousLayerBlockId = currentLayerBlockId
+                                    elif (codeLine.startswith(';TYPE:')):
+                                        # This is a type changing line
+                                        typeChar = printTypes.get(codeLine, 'PR')
 
-                                percentage = round((commandsInThisLayerBlock / len(layerBlock)) * 100)
-                                verboseData = {
-                                    'sequence': seq_ix + 1,
-                                    'layer': currentLayerBlockId,
-                                    'layers': len(layerBlocks),
-                                    'percentage': percentage,
-                                    'type': typeChar
-                                }
-                                verboseString = verbosePattern % verboseData
+                                    percentage = round((commandsInThisLayerBlock / len(layerBlock)) * 100)
+                                    verboseData = {
+                                        'sequence': seq_ix + 1,
+                                        'layer': currentLayerBlockId,
+                                        'layers': len(layerBlocks),
+                                        'percentage': percentage,
+                                        'type': typeChar
+                                    }
+                                    verboseString = verbosePattern % verboseData
 
-                                outputFile.write(codeLine + '\n')
+                                    outputFile.write(codeLine + '\n')
 
-                                if (previousPercentage != percentage or previousTypeChar != typeChar):
-                                    outputFile.write(verboseString + '\n')
-                                    previousPercentage = percentage
-                                    previousTypeChar = typeChar
+                                    if (previousPercentage != percentage or previousTypeChar != typeChar):
+                                        outputFile.write(verboseString + '\n')
+                                        previousPercentage = percentage
+                                        previousTypeChar = typeChar
 
-                                    sequenceCommandsAdded += 1
-                                    fileCommandsAdded += 1
+                                        sequenceCommandsAdded += 1
+                                        fileCommandsAdded += 1
 
-                                if (codeLine.startswith('G1') or codeLine.startswith(';TYPE:')):
-                                    progressPatch.update()
-                            else:
-                                outputFile.write(codeLine + '\n')
+                                    if (codeLine.startswith('G1') or codeLine.startswith(';TYPE:')):
+                                        progressPatch.update()
+                                else:
+                                    outputFile.write(codeLine + '\n')
 
-                    if (sequenceBeep):
-                        outputFile.write('M300\n')
+                        if (sequenceBeep):
+                            outputFile.write('M300\n')
 
-                    seqEnd = datetime.now()
-                    seqDelta = seqEnd - seqStart
+                        seqEnd = datetime.now()
+                        seqDelta = seqEnd - seqStart
 
-                    print('Added a total of', sequenceCommandsAdded, 'commands to this sequence.')
-                    print('Desired operations for sequence', seq_ix + 1, 'of', len(sequences), 'completed in', precisedelta(seqDelta, format = '%0.0f'))
+                        print('Added a total of', sequenceCommandsAdded, 'commands to this sequence.')
+                        print('Desired operations for sequence', seq_ix + 1, 'of', len(sequences), 'completed in', precisedelta(seqDelta, format = '%0.0f'))
 
-                outputFile.write(code[endCmt:])
+                    outputFile.write(code[endCmt:])
 
-                if (beep):
-                    outputFile.write('M300\n' * (2 if sequenceBeep else 1))
+                    if (beep):
+                        outputFile.write('M300\n' * (2 if sequenceBeep else 1))
 
-            fileEnd = datetime.now()
-            fileDelta = fileEnd - fileStart
+                fileEnd = datetime.now()
+                fileDelta = fileEnd - fileStart
 
-            print('Added a total of', fileCommandsAdded, 'commands to this file.')
-            print('Desired operations for file', path_ix + 1, 'of', len(paths), 'at', path, 'completed in', precisedelta(fileDelta, format = '%0.0f'))
+                print('Added a total of', fileCommandsAdded, 'commands to this file.')
+                print('Desired operations for file', path_ix + 1, 'of', len(paths), 'at', path, 'completed in', precisedelta(fileDelta, format = '%0.0f'))
+            
+            except Exception as e:
+                print('Failed to process file', path_ix + 1, 'of', len(paths),
+                    'at', path, 'due to the following exception:')
+                print_exception(e)
+                continue
         else:
             print('No more files found to process.')
 
@@ -330,6 +337,7 @@ def main(
 if (__name__ == '__main__'):
     run(
         main,
+        pretty_exceptions_short = False,
         context_settings = {
             'help_option_names': ['-h', '--help']
         })
