@@ -2,7 +2,7 @@
 from typer        import Typer
 from typer.core   import TyperGroup, MarkupMode
 from typer.models import Default
-from typing       import Any, Type, Optional, Callable
+from typing       import Any, Type, Optional, Callable, Union
 
 def run(
     function: Callable[..., Any],
@@ -26,7 +26,7 @@ def run(
     add_completion: bool = False,
     # Rich settings
     rich_markup_mode: MarkupMode = None,
-    rich_help_panel: str | None = Default(None),
+    rich_help_panel: Union[str, None] = Default(None),
     pretty_exceptions_enable: bool = True,
     pretty_exceptions_show_locals: bool = True,
     pretty_exceptions_short: bool = True,
