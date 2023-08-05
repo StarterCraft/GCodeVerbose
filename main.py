@@ -168,7 +168,7 @@ def main(
                 outputFileName = f'{to if to else origDir}/{prefix}{fileName}{suffix}.gcode'
 
                 fileStart = datetime.now()
-                
+
                 try:
                     with open(outputFileName, 'x') as outputFile:
                         outputFile.write('')
@@ -313,7 +313,7 @@ def main(
 
                 print('Added a total of', fileCommandsAdded, 'commands to this file.')
                 print('Desired operations for file', path_ix + 1, 'of', len(paths), 'at', path, 'completed in', precisedelta(fileDelta, format = '%0.0f'))
-            
+
             except Exception as e:
                 print('Failed to process file', path_ix + 1, 'of', len(paths),
                     'at', path, 'due to the following exception:')
