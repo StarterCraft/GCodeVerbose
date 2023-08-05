@@ -329,7 +329,7 @@ def main(
 
 if (__name__ == '__main__'):
     run(
-        main, 
+        main,
         context_settings = {
             'help_option_names': ['-h', '--help']
         })
