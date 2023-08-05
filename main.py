@@ -2,17 +2,19 @@
 #coding=utf-8
 from os           import makedirs
 from os.path      import sep as pathsep
-from typing       import Annotated
+from typing       import Any, Annotated, Callable
 from datetime     import datetime
 from glob         import glob
 
 from pathlib      import Path
-from typer        import run, Argument, Option
+from typer        import Argument, Option
+from click.types  import Path
 from humanize     import precisedelta
+from tqdm         import tqdm
 
 from layerBlock   import LayerBlock
 from sequence     import PrintSequence
-from tqdm         import tqdm
+from application  import run
 
 __version__ = 3
 printTypes = {
@@ -36,46 +38,86 @@ def main(
             dir_okay = False,
             help = 'Desired paths to G-Code files. If none, all G-Code files in the current '
                 'directory are used.\n'
-                'If --thisdir is used, the paths are appended to the known G-Code file paths '
+                'If --all is used, the paths are appended to the known G-Code file paths '
                 'in the current directory.\n'
                 'If --recursive is used, the paths are appended to the known G-Code file paths '
-                'in the current directory and its\' subdirectories.'
+                'in the current directory and its\' subdirectories.',
+                rich_help_panel = 'Files to process'
         )] = None,
         thisdir: Annotated[bool, Option(
             '--all', '-a',
             help = 'Include all G-Code files in the current directory.',
-            is_flag = True
+            is_flag = True,
+            rich_help_panel = 'Files to process'
         )] = False,
         recursive: Annotated[bool, Option(
             '--recursive', '-r',
             help = 'Include all G-Code files in the output directory and its\' subdirectories.',
-            is_flag = True
+            is_flag = True,
+            rich_help_panel = 'Files to process'
         )] = False,
         to: Annotated[str, Option(
             '--to', '-o',
             file_okay = False,
             dir_okay = True,
+            click_type = Path(),
             help = 'Directory to output files in. If none, the original files\' '
-                'directories are used.'
+                'directories are used.',
+            rich_help_panel = 'Files to process'
         )] = '',
         prefix: Annotated[str, Option(
             '--prefix', '-p',
             help = 'Prefix for output file names. If none, no prefix will be used. '
-                'Attention: either prefix or suffix has to be provided!'
+                'Attention: either prefix or suffix has to be provided!',
+            rich_help_panel = 'Files to process'
         )] = '',
         suffix: Annotated[str, Option(
             '--suffix', '-s',
             help = 'Suffix for output file names. If none, no prefix will be used. '
-                'Attention: either prefix or suffix has to be provided!'
+                'Attention: either prefix or suffix has to be provided!',
+            rich_help_panel = 'Files to process'
         )] = '_V',
         overwrite: Annotated[bool, Option(
             '--overwrite', '-w',
             help = 'Overwrite the existing files in the output directory.',
-            is_flag = True
+            is_flag = True,
+            rich_help_panel = 'Files to process'
+        )] = False,
+        verbose: Annotated[bool, Option(
+            '--verbose/--no-verbose', '-v/-V',
+            help = 'Add M117 commands to display current printing status. '
+                'Pattern --pattern is used.',
+            is_flag = True,
+            rich_help_panel = 'Processing'
+        )] = True,
+        verbosePattern: Annotated[str, Option(
+            '--pattern', '-p',
+            help = 'The pattern to use for --verbose option. Provide in "double brackets". '
+                'Keys: %(sequence)d - sequence number, %(layer)d - current layer number, '
+                '%(layers)d - the number of layers in current sequence, '
+                '%(percentage)d - the progress of the current layer, '
+                '%(type)s - the current printing operation type.',
+            rich_help_panel = 'Processing'
+        )] = 'M117 S%(sequence)d L%(layer)d/%(layers)d %(percentage)d%% %(type)s',
+        beep: Annotated[bool, Option(
+            '--beep/--no-beep', '-b/-B',
+            help = 'Add a M300 command to beep loudly in the end of printing. '
+                'If --sequence-beep is used, there will be 3 beeps in the end '
+                'of printing. You can avoid this by using --no-beep with '
+                '--sequence-beep.',
+            is_flag = True,
+            rich_help_panel = 'Processing'
+        )] = True,
+        sequenceBeep: Annotated[bool, Option(
+            '--sequence-beep/--no-sequence-beep', '-q/-Q',
+            help = 'Add a M300 command to beep loudly in the end of printing for '
+                'every sequence. This option can be annoying, use with caution.',
+            is_flag = True,
+            rich_help_panel = 'Processing'
         )] = False
         ) -> int:
     '''
-    Modify the given G-Code files to verbose printing state.
+    Modify the given G-Code files according to the user's requests.
     '''
     try:
         print('GCodeVerbose version', __version__)
@@ -214,7 +256,7 @@ def main(
                         for lineNo, codeLine in enumerate(sequence.lines):
                             layerBlock = getLayerBlock(layerBlocks, lineNo)
                             currentLayerBlockId = layerBlock.ix if layerBlock else -1
-                            if (layerBlock):
+                            if (layerBlock and verbose):
                                 if (codeLine.startswith('G1')):
                                     # This is a G1 command
                                     if (currentLayerBlockId == previousLayerBlockId):
@@ -227,12 +269,19 @@ def main(
                                     typeChar = printTypes.get(codeLine, 'PR')
 
                                 percentage = round((commandsInThisLayerBlock / len(layerBlock)) * 100)
-                                verbose = 'M117 S{} L{}/{} {}% {}'.format(seq_ix + 1, currentLayerBlockId, len(layerBlocks), percentage, typeChar)
+                                verboseData = {
+                                    'sequence': seq_ix + 1,
+                                    'layer': currentLayerBlockId,
+                                    'layers': len(layerBlocks),
+                                    'percentage': percentage,
+                                    'type': typeChar
+                                }
+                                verboseString = verbosePattern % verboseData
 
                                 outputFile.write(codeLine + '\n')
 
                                 if (previousPercentage != percentage or previousTypeChar != typeChar):
-                                    outputFile.write(verbose + '\n')
+                                    outputFile.write(verboseString + '\n')
                                     previousPercentage = percentage
                                     previousTypeChar = typeChar
 
@@ -244,6 +293,9 @@ def main(
                             else:
                                 outputFile.write(codeLine + '\n')
 
+                    if (sequenceBeep):
+                        outputFile.write('M300\n')
+
                     seqEnd = datetime.now()
                     seqDelta = seqEnd - seqStart
 
@@ -251,6 +303,9 @@ def main(
                     print('Desired operations for sequence', seq_ix + 1, 'of', len(sequences), 'completed in', precisedelta(seqDelta, format = '%0.0f'))
 
                 outputFile.write(code[endCmt:])
+
+            if (beep):
+                outputFile.write('M300\n' * (2 if sequenceBeep else 1))
 
             fileEnd = datetime.now()
             fileDelta = fileEnd - fileStart
@@ -273,4 +328,8 @@ def main(
         return 1
 
 if (__name__ == '__main__'):
-    run(main)
+    run(
+        main, 
+        context_settings = {
+            'help_option_names': ['-h', '--help']
+        })
