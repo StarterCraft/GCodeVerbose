@@ -91,7 +91,7 @@ def main(
             rich_help_panel = 'Processing'
         )] = True,
         verbosePattern: Annotated[str, Option(
-            '--pattern', '-p',
+            '--pattern', '-t',
             help = 'The pattern to use for --verbose option. Provide in "double brackets". '
                 'Keys: %(sequence)d - sequence number, %(layer)d - current layer number, '
                 '%(layers)d - the number of layers in current sequence, '
