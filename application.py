@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from typer        import Typer
 from typer.core   import TyperGroup, MarkupMode
 from typer.models import Default
