@@ -304,8 +304,8 @@ def main(
 
                 outputFile.write(code[endCmt:])
 
-            if (beep):
-                outputFile.write('M300\n' * (2 if sequenceBeep else 1))
+                if (beep):
+                    outputFile.write('M300\n' * (2 if sequenceBeep else 1))
 
             fileEnd = datetime.now()
             fileDelta = fileEnd - fileStart
