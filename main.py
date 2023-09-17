@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from os          import makedirs
+from os          import makedirs, remove
 from os.path     import sep as pathsep
 from typing      import Annotated
 from datetime    import datetime
@@ -8,7 +8,7 @@ from glob        import glob
 
 from pathlib     import Path
 from typer       import Argument, Option
-from click.types import Path
+from click.types import Path as ClickPath
 from humanize    import precisedelta
 from tqdm        import tqdm
 
@@ -34,8 +34,7 @@ def getLayerBlock(blocks: list[LayerBlock], lineNo: int) -> LayerBlock | None:
 
 def main(
         paths: Annotated[list[str], Argument(
-            file_okay = True,
-            dir_okay = False,
+            click_type = ClickPath(file_okay = True, dir_okay = False),
             help = 'Desired paths to G-Code files. If none, all G-Code files in the current '
                 'directory are used.\n'
                 'If --all is used, the paths are appended to the known G-Code file paths '
@@ -58,9 +57,7 @@ def main(
         )] = False,
         to: Annotated[str, Option(
             '--to', '-o',
-            file_okay = False,
-            dir_okay = True,
-            click_type = Path(),
+            click_type = ClickPath(file_okay = False, dir_okay = True),
             help = 'Directory to output files in. If none, the original files\' '
                 'directories are used.',
             rich_help_panel = 'Files to process'
@@ -185,11 +182,12 @@ def main(
 
                     if (not code.startswith(';FLAVOR:') or not 'G91 ;' in code):
                         # If not G-Code, don-t process
-                        if (code.startswith(';FLAVOR:')):
+                        if (not code.startswith(';FLAVOR:')):
                             print('FLAVOR definition not found')
-                        if ('G91 ;' in code):
+                        if (not 'G91 ;' in code):
                             print('G91 operation is not defined')
                         print(f'{path} is not a valid G-Code file. Skipping.')
+                        remove(outputFileName)
                         continue
 
                     codeLines = code.splitlines()
