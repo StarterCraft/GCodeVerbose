@@ -16,7 +16,7 @@ from layerBlock  import LayerBlock
 from sequence    import PrintSequence
 from application import run
 
-__version__ = 3
+__version__ = 4
 printTypes = {
     ';TYPE:SKIN': 'SK',
     ';TYPE:FILL': 'FL',
@@ -153,6 +153,8 @@ def main(
         if (to):
             makedirs(to, exist_ok = True)
 
+        pathsForRemoval = []
+
         for path_ix, path in enumerate(paths):
             try:
                 print('\nChecking file no.', path_ix + 1, 'of', len(paths), 'at', path)
@@ -187,7 +189,7 @@ def main(
                         if (not 'G91 ;' in code):
                             print('G91 operation is not defined')
                         print(f'{path} is not a valid G-Code file. Skipping.')
-                        remove(outputFileName)
+                        pathsForRemoval.append(outputFileName)
                         continue
 
                     codeLines = code.splitlines()
@@ -319,6 +321,9 @@ def main(
                 continue
         else:
             print('No more files found to process.')
+
+        for fileName in pathsForRemoval:
+            remove(fileName)
 
         if (paths):
             endTime = datetime.now()
